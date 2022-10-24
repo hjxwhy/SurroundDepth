@@ -5,7 +5,9 @@
 # available in the LICENSE file.
 
 from __future__ import absolute_import, division, print_function
-
+import os
+os.environ['OMP_NUM_THREADS'] = '8'
+os.environ['MKL_NUM_THREADS'] = '8'
 from runer import Runer
 from options import MonodepthOptions
 

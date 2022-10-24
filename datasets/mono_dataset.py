@@ -99,21 +99,25 @@ class MonoDataset(data.Dataset):
                 for i in range(self.num_scales):
                     inputs[(n, im, i)] = []
                     inputs[(n + "_aug", im, i)] = []
-                    #print(n, im, i)
                     for index_spatial in range(6):
                         inputs[(n, im, i)].append(self.resize[i](inputs[(n, im, i - 1)][index_spatial]))
-
+        # t1 = time.time()
         for k in list(inputs):
             f = inputs[k]
             if "color" in k:
                 n, im, i = k
+                if i == -1:
+                    continue
                 for index_spatial in range(6):
                     aug = color_aug(f[index_spatial])
-                    inputs[(n, im, i)][index_spatial] = self.to_tensor(f[index_spatial])
-                    inputs[(n + "_aug", im, i)].append(self.to_tensor(aug))
+                    inputs[(n, im, i)][index_spatial] = torch.from_numpy(np.array(f[index_spatial], dtype=np.float32).transpose([2, 0, 1]))
+                    inputs[(n + "_aug", im, i)].append(torch.from_numpy(np.array(aug, dtype=np.float32).transpose([2, 0, 1])))
+                    # inputs[(n, im, i)][index_spatial] = self.to_tensor(f[index_spatial])
+                    # inputs[(n + "_aug", im, i)].append(self.to_tensor(aug))
                 
                 inputs[(n, im, i)] = torch.stack(inputs[(n, im, i)], dim=0)
-                inputs[(n + "_aug", im, i)] = torch.stack(inputs[(n + "_aug", im, i)], dim=0)
+                inputs[(n + "_aug", im, i)] = torch.stack(inputs[(n + "_aug", im, i)], dim=0)   
+        # print(time.time()-t1)     
 
     def __len__(self):
         return len(self.filenames)
@@ -192,6 +196,7 @@ class MonoDataset(data.Dataset):
         self.preprocess(inputs, color_aug)
 
         del inputs[("color", 0, -1)]
+        del inputs[("color_aug", 0, -1)]
         if self.is_train:
             for i in self.frame_idxs[1:]:
                 del inputs[("color", i, -1)]
@@ -203,6 +208,7 @@ class MonoDataset(data.Dataset):
             
         del inputs['width_ori']
         del inputs['height_ori']
+        # gc.collect()
 
         
         if 'depth' in inputs.keys():

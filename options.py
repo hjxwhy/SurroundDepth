@@ -16,7 +16,7 @@ class MonodepthOptions:
     def __init__(self):
         self.parser = configargparse.ArgumentParser()
 
-        self.parser.add_argument('--config', is_config_file=True,
+        self.parser.add_argument('--config', default='/home/hjx/copy-from/SurroundDepth/configs/ddad_scale.txt', is_config_file=True,
                                  help='config file path')
 
         # PATHS
@@ -181,7 +181,7 @@ class MonodepthOptions:
         self.parser.add_argument("--pose_model_type",
                                  type=str,
                                  help="normal or shared",
-                                 default="separate_resnet")
+                                 default="shared")
 
 
         # SYSTEM options
@@ -191,7 +191,7 @@ class MonodepthOptions:
         self.parser.add_argument("--num_workers",
                                  type=int,
                                  help="number of dataloader workers",
-                                 default=12)
+                                 default=4)
 
         # LOADING options
         self.parser.add_argument("--load_weights_folder",
@@ -215,7 +215,7 @@ class MonodepthOptions:
         self.parser.add_argument("--eval_frequency",
                                  type=int,
                                  help="number of epochs between each save",
-                                 default=1000)
+                                 default=10)
 
 
         # EVALUATION options

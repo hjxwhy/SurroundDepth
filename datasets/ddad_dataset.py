@@ -5,6 +5,8 @@
 # available in the LICENSE file.
 
 from __future__ import absolute_import, division, print_function
+from concurrent.futures import thread
+import imp
 
 import os
 import skimage.transform
@@ -13,6 +15,9 @@ import PIL.Image as pil
 import pickle
 import pdb
 import cv2
+import threading
+import queue
+import time
 
 from .mono_dataset import MonoDataset
 
@@ -24,15 +29,15 @@ class DDADDataset(MonoDataset):
         super(DDADDataset, self).__init__(*args, **kwargs)
 
         self.split = 'train' if self.is_train else 'val'
-        self.rgb_path = 'data/ddad/raw_data'
-        self.depth_path = 'data/ddad/depth'
+        self.rgb_path = '/media/hjx/dataset/DDAD/ddad_train_val'
+        self.depth_path = '/media/hjx/dataset/DDAD/ddad_train_val'
         self.match_path = 'data/ddad/match'
-        self.mask_path = 'data/ddad/mask'
+        self.mask_path = '/media/hjx/dataset/DDAD/mask'
 
         with open('datasets/ddad/{}.txt'.format(self.split), 'r') as f:
             self.filenames = f.readlines()
 
-        with open('datasets/ddad/info_{}.pkl'.format(self.split), 'rb') as f:
+        with open('/media/hjx/dataset/DDAD/meta_data/info_{}.pkl'.format(self.split), 'rb') as f:
             self.info = pickle.load(f)
 
         self.camera_ids = ['front', 'front_left', 'back_left', 'back', 'back_right', 'front_right']
@@ -72,8 +77,8 @@ class DDADDataset(MonoDataset):
             
         
             if not self.is_train:
-                depth = np.load(os.path.join(self.depth_path, scene_id, 'depth',
-                            self.camera_names[index_spatial], index_temporal + '.npy'))
+                depth = np.load(os.path.join(self.depth_path, scene_id, 'depth', 'lidar',
+                            self.camera_names[index_spatial], index_temporal + '.npz'), allow_pickle=True)['depth']
                 inputs['depth'].append(depth.astype(np.float32))
             
             if do_flip:

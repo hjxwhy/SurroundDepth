@@ -88,7 +88,7 @@ class Runer:
 
         self.local_rank = self.opt.local_rank
         torch.cuda.set_device(self.local_rank)
-        dist.init_process_group(backend='nccl')
+        # dist.init_process_group(backend='nccl')
         self.device = torch.device("cuda", self.local_rank)
 
         self.num_scales = len(self.opt.scales)
@@ -104,13 +104,13 @@ class Runer:
 
         self.models["encoder"] = networks.ResnetEncoder(
                 self.opt.num_layers, self.opt.weights_init == "pretrained")
-        self.models["encoder"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["encoder"])
+        # self.models["encoder"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["encoder"])
         self.models["encoder"] = (self.models["encoder"]).to(self.device)
         self.parameters_to_train += list(self.models["encoder"].parameters())
 
         self.models["depth"] = networks.DepthDecoder(
             self.opt, self.models["encoder"].num_ch_enc, self.opt.scales)
-        self.models["depth"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["depth"])
+        # self.models["depth"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["depth"])
         self.models["depth"] = (self.models["depth"]).to(self.device)
         self.parameters_to_train += list(self.models["depth"].parameters())
 
@@ -122,7 +122,7 @@ class Runer:
                 self.opt.weights_init == "pretrained",
                 num_input_images=self.num_pose_frames)
 
-                self.models["pose_encoder"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["pose_encoder"])
+                # self.models["pose_encoder"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["pose_encoder"])
                 self.models["pose_encoder"] = self.models["pose_encoder"].to(self.device)
                 self.parameters_to_train += list(self.models["pose_encoder"].parameters())
 
@@ -139,7 +139,7 @@ class Runer:
                 self.models["pose"] = networks.PoseCNN(
                     self.num_input_frames if self.opt.pose_model_input == "all" else 2)
 
-            self.models["pose"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["pose"])
+            # self.models["pose"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["pose"])
             self.models["pose"] = (self.models["pose"]).to(self.device)
             self.parameters_to_train += list(self.models["pose"].parameters())
 
@@ -152,7 +152,7 @@ class Runer:
             self.models["predictive_mask"] = networks.DepthDecoder(
                 self.models["encoder"].num_ch_enc, self.opt.scales,
                 num_output_channels=(len(self.opt.frame_ids) - 1))
-            self.models["predictive_mask"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["predictive_mask"])
+            # self.models["predictive_mask"] = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models["predictive_mask"])
             self.models["predictive_mask"] = (self.models["predictive_mask"]).to(self.device)
             self.parameters_to_train += list(self.models["predictive_mask"].parameters())
 
@@ -161,8 +161,8 @@ class Runer:
         if self.opt.load_weights_folder is not None:
             self.load_model()
 
-        for key in self.models.keys():
-            self.models[key] = DDP(self.models[key], device_ids=[self.local_rank], output_device=self.local_rank, find_unused_parameters=True, broadcast_buffers=False)
+        # for key in self.models.keys():
+        #     self.models[key] = DDP(self.models[key], device_ids=[self.local_rank], output_device=self.local_rank, find_unused_parameters=True, broadcast_buffers=False)
 
         self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
         self.model_lr_scheduler = optim.lr_scheduler.StepLR(
@@ -173,19 +173,21 @@ class Runer:
 
         # data
         datasets_dict = {"ddad": datasets.DDADDataset,
-                         "nusc": datasets.NuscDataset}
+                        #  "nusc": datasets.NuscDataset
+                         }
         self.dataset = datasets_dict[self.opt.dataset]
 
-        self.opt.batch_size = self.opt.batch_size // 6
+        self.opt.batch_size = self.opt.batch_size #// 6
 
         train_dataset = self.dataset(self.opt,
             self.opt.height, self.opt.width,
             self.opt.frame_ids, 4, is_train=True)
 
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
+        # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
         self.train_loader = DataLoader(
             train_dataset, self.opt.batch_size, collate_fn=self.my_collate,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, sampler=train_sampler)
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, #sampler=train_sampler
+            )
         
         self.num_total_steps = len(self.train_loader) * self.opt.num_epochs
         
@@ -194,10 +196,11 @@ class Runer:
                 self.opt.frame_ids, 4, is_train=False)
         rank, world_size = get_dist_info()
         self.world_size = world_size
-        val_sampler = DistributedSampler(val_dataset, world_size, rank, shuffle=False)
+        # val_sampler = DistributedSampler(val_dataset, world_size, rank, shuffle=False)
         self.val_loader = DataLoader(
             val_dataset, self.opt.batch_size, collate_fn=self.my_collate,
-            num_workers=4, pin_memory=True, drop_last=False, sampler=val_sampler)
+            num_workers=2, pin_memory=True, drop_last=False, #sampler=val_sampler
+            )
         
         self.val_iter = iter(self.val_loader)
         self.num_val = len(val_dataset)
@@ -274,7 +277,7 @@ class Runer:
         self.epoch = 0
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
-            self.train_loader.sampler.set_epoch(self.epoch)
+            # self.train_loader.sampler.set_epoch(self.epoch)
             self.run_epoch()
 
             
@@ -640,7 +643,8 @@ class Runer:
 
                 outputs[("color", frame_id, scale)] = F.grid_sample(
                     inputs[("color", frame_id, source_scale)],
-                    outputs[("sample", frame_id, scale)],
+                    pix_coords,
+                    # outputs[("sample", frame_id, scale)],
                     padding_mode="border", align_corners=True)
                 
 
@@ -651,8 +655,8 @@ class Runer:
                 if self.opt.spatial:        
                     T = inputs[('pose_spatial', frame_id)]
         
-                    cam_points = self.backproject_depth[source_scale](
-                        outputs[("depth", 0, scale)], inputs[("inv_K", 0, source_scale)])
+                    # cam_points = self.backproject_depth[source_scale](
+                    #     outputs[("depth", 0, scale)], inputs[("inv_K", 0, source_scale)])
 
                     K_temp = inputs[("K", 0, source_scale)].clone().reshape(-1, 6, 4, 4)
                     if frame_id == 1:
@@ -664,7 +668,7 @@ class Runer:
                     pix_coords = self.project_3d[source_scale](
                         cam_points, K_temp, T)
         
-                    outputs[("sample_spatial", frame_id, scale)] = pix_coords
+                    # outputs[("sample_spatial", frame_id, scale)] = pix_coords
         
                     B, C, H, W = inputs[("color", 0, source_scale)].shape
                     inputs_temp = inputs[("color", 0, source_scale)].reshape(-1, 6, C, H, W)
@@ -685,18 +689,21 @@ class Runer:
                         
                     outputs[("color_spatial", frame_id, scale)] = F.grid_sample(
                         inputs_temp,
-                        outputs[("sample_spatial", frame_id, scale)],
+                        pix_coords,
+                        # outputs[("sample_spatial", frame_id, scale)],
                         padding_mode="zeros", align_corners=True)
 
                     if self.opt.use_fix_mask:
                         outputs[("color_spatial_mask", frame_id, scale)] = F.grid_sample(
                             inputs_mask[:, 0:1],
-                            outputs[("sample_spatial", frame_id, scale)],
+                            pix_coords,
+                            # outputs[("sample_spatial", frame_id, scale)],
                             padding_mode="zeros", align_corners=True, mode='nearest').detach()
                     else:
                         outputs[("color_spatial_mask", frame_id, scale)] = F.grid_sample(
                             torch.ones(B, 1, H, W).cuda(),
-                            outputs[("sample_spatial", frame_id, scale)],
+                            pix_coords,
+                            # outputs[("sample_spatial", frame_id, scale)],
                             padding_mode="zeros", align_corners=True, mode='nearest').detach()
 
                         
@@ -968,7 +975,8 @@ class Runer:
     
             for model_name, model in self.models.items():
                 save_path = os.path.join(save_folder, "{}.pth".format(model_name))
-                to_save = model.module.state_dict()
+                # to_save = model.module.state_dict()
+                to_save = model.state_dict()
                 if model_name == 'encoder':
                     # save the sizes - these are needed at prediction time
                     to_save['height'] = self.opt.height

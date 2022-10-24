@@ -55,19 +55,19 @@ class DepthDecoder(nn.Module):
 
         self.cross = {}
 
-        for i in range(len(self.num_ch_enc)):
-            self.cross[i] = CVT(input_channel=self.num_ch_enc[i], downsample_ratio=2**(len(self.num_ch_enc) -1 - i), iter_num=self.iter_num[i])
+        # for i in range(len(self.num_ch_enc)):
+        #     self.cross[i] = CVT(input_channel=self.num_ch_enc[i], downsample_ratio=2**(len(self.num_ch_enc) -1 - i), iter_num=self.iter_num[i])
 
-        self.decoder_cross = nn.ModuleList(list(self.cross.values()))
+        # self.decoder_cross = nn.ModuleList(list(self.cross.values()))
 
     def forward(self, input_features):
         self.outputs = {}
-        for i in range(len(input_features)):
-            B, C, H, W = input_features[i].shape
-            if self.opt.skip:
-                input_features[i] = input_features[i] + self.cross[i](input_features[i].reshape(-1, 6, C, H, W)).reshape(B, C, H, W)
-            else:
-                input_features[i] = self.cross[i](input_features[i].reshape(-1, 6, C, H, W)).reshape(B, C, H, W)
+        # for i in range(len(input_features)):
+        #     B, C, H, W = input_features[i].shape
+        #     if self.opt.skip:
+        #         input_features[i] = input_features[i] + self.cross[i](input_features[i].reshape(-1, 6, C, H, W)).reshape(B, C, H, W)
+        #     else:
+        #         input_features[i] = self.cross[i](input_features[i].reshape(-1, 6, C, H, W)).reshape(B, C, H, W)
         
         # decoder
         x = input_features[-1]
