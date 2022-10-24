@@ -7,14 +7,12 @@
 from __future__ import absolute_import, division, print_function
 
 import os
-import skimage.transform
 import numpy as np
 import PIL.Image as pil
 import sys
 sys.path.append('/home/linqing.zhao/dgp')
 #from dgp.datasets import SynchronizedSceneDataset
 import pickle
-import pdb
 import cv2
 
 from .mono_dataset import MonoDataset

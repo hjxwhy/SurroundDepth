@@ -5,18 +5,12 @@
 # available in the LICENSE file.
 
 from __future__ import absolute_import, division, print_function
-from concurrent.futures import thread
-import imp
 
 import os
-import skimage.transform
 import numpy as np
 import PIL.Image as pil
 import pickle
-import pdb
 import cv2
-import threading
-import queue
 import time
 
 from .mono_dataset import MonoDataset
