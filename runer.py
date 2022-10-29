@@ -88,7 +88,8 @@ class Runer:
 
         self.local_rank = self.opt.local_rank
         torch.cuda.set_device(self.local_rank)
-        # dist.init_process_group(backend='nccl')
+        if self.opt.ddp:
+            dist.init_process_group(backend='nccl')
         self.device = torch.device("cuda", self.local_rank)
 
         self.num_scales = len(self.opt.scales)
@@ -158,16 +159,21 @@ class Runer:
 
         
 
-        if self.opt.load_weights_folder is not None:
-            self.load_model()
-
-        # for key in self.models.keys():
-        #     self.models[key] = DDP(self.models[key], device_ids=[self.local_rank], output_device=self.local_rank, find_unused_parameters=True, broadcast_buffers=False)
+        # if self.opt.load_weights_folder is not None:
+        #     self.load_model()
+        #     self.load_optimizer()
+        
+        if self.opt.ddp:
+            for key in self.models.keys():
+                self.models[key] = DDP(torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.models[key]), \
+                    device_ids=[self.local_rank], output_device=self.local_rank, find_unused_parameters=True, broadcast_buffers=False)
 
         self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
         self.model_lr_scheduler = optim.lr_scheduler.StepLR(
         self.model_optimizer, self.opt.scheduler_step_size, 0.1)
-
+        if self.opt.load_weights_folder is not None:
+            self.load_model()
+            self.load_optimizer()
         if self.local_rank == 0:
             self.log_print("Training model named: {}".format(self.opt.model_name))
 
@@ -183,10 +189,12 @@ class Runer:
             self.opt.height, self.opt.width,
             self.opt.frame_ids, 4, is_train=True)
 
-        # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
+        train_sampler = None
+        if self.opt.ddp:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
         self.train_loader = DataLoader(
             train_dataset, self.opt.batch_size, collate_fn=self.my_collate,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, #sampler=train_sampler
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, sampler=train_sampler
             )
         
         self.num_total_steps = len(self.train_loader) * self.opt.num_epochs
@@ -196,10 +204,12 @@ class Runer:
                 self.opt.frame_ids, 4, is_train=False)
         rank, world_size = get_dist_info()
         self.world_size = world_size
-        # val_sampler = DistributedSampler(val_dataset, world_size, rank, shuffle=False)
+        val_sampler = None
+        if self.opt.ddp:
+            val_sampler = DistributedSampler(val_dataset, world_size, rank, shuffle=False)
         self.val_loader = DataLoader(
             val_dataset, self.opt.batch_size, collate_fn=self.my_collate,
-            num_workers=2, pin_memory=True, drop_last=False, #sampler=val_sampler
+            num_workers=2, pin_memory=True, drop_last=False, sampler=val_sampler
             )
         
         self.val_iter = iter(self.val_loader)
@@ -381,11 +391,11 @@ class Runer:
                     pred_disp = pred_disps[i]
                     pred_depth = 1 / pred_disp                   
                     pred_depth = cv2.resize(pred_depth, (gt_width, gt_height))
-
+                    # print(pred_depth)
                     if self.opt.focal:
-                        pred_depth = pred_depth * data[("K", 0, 0)][i, 0, 0].item() / self.opt.focal_scale
+                        pred_depth = 0.5 * pred_depth * data[("K", 0, 0)][i, 0, 0].item() #/ self.opt.focal_scale
 
-                    mask = np.logical_and(gt_depth > self.opt.min_depth, gt_depth < self.opt.max_depth)
+                    mask = np.logical_and(gt_depth > 0, gt_depth < 200)
                     
                     if self.local_rank == 0:
                         pred_depth_color = visualize_depth(pred_depth.copy())
@@ -404,15 +414,15 @@ class Runer:
                     ratios_median.append(ratio_median)
                     pred_depth_median = pred_depth.copy()*ratio_median
         
-                    pred_depth_median[pred_depth_median < self.opt.min_depth] = self.opt.min_depth
-                    pred_depth_median[pred_depth_median > self.opt.max_depth] = self.opt.max_depth
+                    pred_depth_median[pred_depth_median < 0] = 0
+                    pred_depth_median[pred_depth_median > 200] = 200
         
                     errors['scale-ambiguous'][camera_id].append(compute_errors(gt_depth, pred_depth_median))
                     
                     
                     
-                    pred_depth[pred_depth < self.opt.min_depth] = self.opt.min_depth
-                    pred_depth[pred_depth > self.opt.max_depth] = self.opt.max_depth
+                    pred_depth[pred_depth < 0] = 0
+                    pred_depth[pred_depth > 200] = 200
         
                     errors['scale-aware'][camera_id].append(compute_errors(gt_depth, pred_depth))
     
@@ -447,6 +457,8 @@ class Runer:
 
             self.model_optimizer.zero_grad()
             losses["loss"].backward()
+            for group in self.model_optimizer.param_groups:
+                torch.nn.utils.clip_grad_norm_(group['params'], 1)
             self.model_optimizer.step()
 
             duration = time.time() - before_op_time
@@ -456,6 +468,7 @@ class Runer:
             late_phase = self.step % 2000 == 0
 
             if early_phase or late_phase:
+                # print(outputs[('depth', 0, 0)])
                 self.log_time(batch_idx, duration, losses["loss"].cpu().data)
 
                 if "depth_gt" in inputs:
@@ -607,10 +620,11 @@ class Runer:
                 source_scale = 0
 
             _, depth = disp_to_depth(disp, self.opt.min_depth, self.opt.max_depth)
-            
-            if self.opt.focal:
-                depth = depth * inputs[("K", 0, 0)][:, 0, 0][:, None, None, None] / self.opt.focal_scale
 
+            if self.opt.focal:
+                # TODO remove focal_scale
+                depth = 0.5 * depth * inputs[("K", 0, 0)][:, 0, 0][:, None, None, None] #/ self.opt.focal_scale
+                # print(depth)
             outputs[("depth", 0, scale)] = depth
 
             for i, frame_id in enumerate(self.opt.frame_ids[1:]):
@@ -639,7 +653,7 @@ class Runer:
                 pix_coords = self.project_3d[source_scale](
                     cam_points, inputs[("K", frame_id, source_scale)], T)
 
-                outputs[("sample", frame_id, scale)] = pix_coords
+                # outputs[("sample", frame_id, scale)] = pix_coords
 
                 outputs[("color", frame_id, scale)] = F.grid_sample(
                     inputs[("color", frame_id, source_scale)],
@@ -672,17 +686,26 @@ class Runer:
         
                     B, C, H, W = inputs[("color", 0, source_scale)].shape
                     inputs_temp = inputs[("color", 0, source_scale)].reshape(-1, 6, C, H, W)
+                    # depth_temp = depth.detach().reshape(-1, 6, *depth.shape[1:])
                     if self.opt.use_fix_mask:
                         inputs_mask = inputs["mask"].clone().reshape(-1, 6, 2, H, W)
                     if frame_id == 1:
                         inputs_temp = inputs_temp[:, [1, 2, 3, 4, 5, 0]]
                         inputs_temp = inputs_temp.reshape(B, C, H, W)
+                        ######
+                        # depth_temp = depth_temp[:, [1, 2, 3, 4, 5, 0]]
+                        # depth_temp  = depth_temp.reshape(B, *depth_temp.shape[2:])
+
                         if self.opt.use_fix_mask:
                             inputs_mask = inputs_mask[:, [1, 2, 3, 4, 5, 0]]
                             inputs_mask = inputs_mask.reshape(B, 2, H, W)
                     elif frame_id == -1:
                         inputs_temp = inputs_temp[:, [5, 0, 1, 2, 3, 4]]
                         inputs_temp = inputs_temp.reshape(B, C, H, W)
+                        ######
+                        # depth_temp = depth_temp[:, [5, 0, 1, 2, 3, 4]]
+                        # depth_temp  = depth_temp.reshape(B, *depth_temp.shape[2:])
+
                         if self.opt.use_fix_mask:
                             inputs_mask = inputs_mask[:, [5, 0, 1, 2, 3, 4]]
                             inputs_mask = inputs_mask.reshape(B, 2, H, W)
@@ -692,6 +715,12 @@ class Runer:
                         pix_coords,
                         # outputs[("sample_spatial", frame_id, scale)],
                         padding_mode="zeros", align_corners=True)
+                    ########
+                    # outputs[("depth_spatial", frame_id, scale)] = F.grid_sample(
+                    #     depth_temp,
+                    #     pix_coords,
+                    #     # outputs[("sample_spatial", frame_id, scale)],
+                    #     padding_mode="zeros", align_corners=True)
 
                     if self.opt.use_fix_mask:
                         outputs[("color_spatial_mask", frame_id, scale)] = F.grid_sample(
@@ -832,7 +861,8 @@ class Runer:
                 outputs["identity_selection/{}".format(scale)] = (
                     idxs > identity_reprojection_loss.shape[1] - 1).float()
 
-            loss += to_optimise.mean()
+            # loss += to_optimise.mean()
+            loss += to_optimise.sum()/inputs["mask"].sum()
 
             if self.opt.use_sfm_spatial:
                 depth_losses = []
@@ -844,20 +874,32 @@ class Runer:
 
             if self.opt.spatial:
                 reprojection_losses_spatial = []
+                # reprojection_losses_spatial_depth = []
                 spatial_mask = []
                 target = inputs[("color", 0, source_scale)]
+                # target_depth = outputs[("depth", 0, scale)]
 
                 for frame_id in self.opt.frame_ids[1:]:
                     pred = outputs[("color_spatial", frame_id, scale)]
-
+                    spatial_mask.append(outputs[("color_spatial_mask", frame_id, scale)])
                     reprojection_losses_spatial.append(outputs[("color_spatial_mask", frame_id, scale)] * self.compute_reprojection_loss(pred, target))
+
+                    # pred_depth = outputs[('depth_spatial', frame_id, scale)]
+                    # reprojection_losses_spatial_depth.append(outputs[("color_spatial_mask", frame_id, scale)] * self.compute_reprojection_loss(pred_depth, target_depth))
+                
                     
                     
                 reprojection_loss_spatial = torch.cat(reprojection_losses_spatial, 1)
+                spatial_mask = torch.cat(spatial_mask, 1)
+                # reprojection_losses_spatial_depth = torch.cat(reprojection_losses_spatial_depth, 1)
                 if self.opt.use_fix_mask:
                     reprojection_loss_spatial *= inputs["mask"]
+                    spatial_mask = inputs["mask"] * spatial_mask
+                    # reprojection_losses_spatial_depth *= inputs["mask"]
                 
-                loss += self.opt.spatial_weight * reprojection_loss_spatial.mean()
+                # loss += self.opt.spatial_weight * reprojection_loss_spatial.mean()
+                loss += self.opt.spatial_weight * reprojection_loss_spatial.sum()/spatial_mask.sum()
+                # loss += self.opt.spatial_weight * (reprojection_loss_spatial.sum() + reprojection_losses_spatial_depth.sum())/inputs['mask'].sum()
 
 
             

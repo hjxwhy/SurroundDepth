@@ -1,22 +1,22 @@
 from __future__ import absolute_import, division, print_function
 
 import os
-import sys
-import glob
-import argparse
-import numpy as np
-import PIL.Image as pil
-from PIL import Image
-import matplotlib as mpl
-import matplotlib.cm as cm
+# import sys
+# import glob
+# import argparse
+# import numpy as np
+# import PIL.Image as pil
+# from PIL import Image
+# import matplotlib as mpl
+# import matplotlib.cm as cm
 
-import pdb
+# import pdb
 import cv2 as cv
-import copy
+# import copy
 import pickle
-from tqdm import tqdm
+# from tqdm import tqdm
 import copyreg
-import time
+# import time
 import multiprocessing
 
 
@@ -25,12 +25,12 @@ def _pickle_keypoints(point):
                          point.response, point.octave, point.class_id)
 copyreg.pickle(cv.KeyPoint().__class__, _pickle_keypoints)
 
-root_path = '../data/ddad/sift'
-rgb_path = '../data/ddad/raw_data'
+root_path = '/media/hjx/dataset/DDAD/sift'
+rgb_path = '/media/hjx/dataset/DDAD/ddad_train_val'
 camera_names = ['CAMERA_01', 'CAMERA_05', 'CAMERA_06', 'CAMERA_07', 'CAMERA_08', 'CAMERA_09']
 sift = cv.xfeatures2d.SIFT_create(edgeThreshold=8,contrastThreshold=0.01)
 
-with open('../datasets/ddad/info_train.pkl', 'rb') as f:
+with open('/media/hjx/dataset/DDAD/meta_data/info_train.pkl', 'rb') as f:
     info = pickle.load(f)
 
 

@@ -19,19 +19,20 @@ from .mono_dataset import MonoDataset
 class DDADDataset(MonoDataset):
     """Superclass for different types of KITTI dataset loaders
     """
-    def __init__(self, *args, **kwargs):
-        super(DDADDataset, self).__init__(*args, **kwargs)
+    def __init__(self, opts, *args, **kwargs):
+        super(DDADDataset, self).__init__(opts, *args, **kwargs)
 
         self.split = 'train' if self.is_train else 'val'
-        self.rgb_path = '/media/hjx/dataset/DDAD/ddad_train_val'
-        self.depth_path = '/media/hjx/dataset/DDAD/ddad_train_val'
-        self.match_path = 'data/ddad/match'
-        self.mask_path = '/media/hjx/dataset/DDAD/mask'
+        self.data_path = opts.data_path
+        self.rgb_path = os.path.join(self.data_path, 'ddad_train_val')
+        self.depth_path = os.path.join(self.data_path, 'ddad_train_val')
+        self.match_path = os.path.join(self.data_path, 'match')
+        self.mask_path = os.path.join(self.data_path, 'mask')
 
         with open('datasets/ddad/{}.txt'.format(self.split), 'r') as f:
             self.filenames = f.readlines()
 
-        with open('/media/hjx/dataset/DDAD/meta_data/info_{}.pkl'.format(self.split), 'rb') as f:
+        with open(os.path.join(self.data_path, 'meta_data/info_{}.pkl'.format(self.split)), 'rb') as f:
             self.info = pickle.load(f)
 
         self.camera_ids = ['front', 'front_left', 'back_left', 'back', 'back_right', 'front_right']

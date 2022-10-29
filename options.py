@@ -201,7 +201,7 @@ class MonodepthOptions:
                                  nargs="+",
                                  type=str,
                                  help="models to load",
-                                 default=["encoder", "depth", "pose_encoder", "pose"])
+                                 default=["encoder", "depth", "pose"])
 
         # LOGGING options
         self.parser.add_argument("--log_frequency",
@@ -260,6 +260,7 @@ class MonodepthOptions:
                                  action="store_true")
 
         self.parser.add_argument("--local_rank", default=0,type=int)
+        self.parser.add_argument("--ddp", action='store_true')
 
     def parse(self):
         self.options = self.parser.parse_args()

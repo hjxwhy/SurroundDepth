@@ -1,25 +1,25 @@
 from __future__ import absolute_import, division, print_function
 
 import os
-import sys
-import glob
-import argparse
+# import sys
+# import glob
+# import argparse
 import numpy as np
-import PIL.Image as pil
-from PIL import Image
-import matplotlib as mpl
-import matplotlib.cm as cm
+# import PIL.Image as pil
+# from PIL import Image
+# import matplotlib as mpl
+# import matplotlib.cm as cm
 
-import pdb
+# import pdb
 import cv2 as cv
-import copy
-import scipy.io as sio
+# import copy
+# import scipy.io as sio
 import pickle
-import joblib
+# import joblib
 import copyreg
-from tqdm import tqdm
-import time
-import matplotlib.pyplot as plt
+# from tqdm import tqdm
+# import time
+# import matplotlib.pyplot as plt
 import multiprocessing
 import random
 
@@ -163,15 +163,15 @@ def compute_depth(point_0, point_1, point_ori):
     depth = t0*c0
     return depth, cos_angle
 
-root_path = '../data/ddad/sift'
-root_save_path = '../data/ddad/match'
-mask_path = '../data/ddad/mask'
+root_path = '/media/hjx/dataset/DDAD/sift'
+root_save_path = '/media/hjx/dataset/DDAD/match'
+mask_path = '/media/hjx/dataset/DDAD/mask'
 
 camera_names = ['CAMERA_01', 'CAMERA_05', 'CAMERA_07', 'CAMERA_09', 'CAMERA_08','CAMERA_06']
 sift = cv.xfeatures2d.SIFT_create(edgeThreshold=8,contrastThreshold=0.01)
 frame_ids = [-1, 1]
 
-with open('../datasets/ddad/info_train.pkl', 'rb') as f:
+with open('/media/hjx/dataset/DDAD/meta_data/info_train.pkl', 'rb') as f:
     info = pickle.load(f)
 
 to_save_depth, to_save_pose = {}, {}
@@ -182,7 +182,7 @@ random.shuffle(info_list)
 #for source_id in tqdm(info_list):
 def process(source_id):
     scene_name = info[source_id]['scene_name']   
-    
+
     if -1 in info[source_id]['context']:
         return
 
@@ -192,20 +192,21 @@ def process(source_id):
         os.makedirs(os.path.join(root_save_path, scene_name, 'match', camera_name), exist_ok=True)
         save_path = os.path.join(root_save_path, scene_name, 'match', 
                                 camera_name, source_id + '.pkl')
-        if os.path.exists(save_path):
-            break_flag = True
-            break
+        # if os.path.exists(save_path):
+        #     break_flag = True
+        #     break
         with open(os.path.join(root_path, scene_name, 'sift', camera_name, source_id + '.pkl'), 'rb') as f:
             source_sift = pickle.load(f)
             sifts.append(source_sift)
+            print('11')
         
         pose_0_spatial = info[source_id][camera_name]['extrinsics']['quat'].transformation_matrix
         pose_0_spatial[:3, 3] = info[source_id][camera_name]['extrinsics']['tvec']
         Ts.append(pose_0_spatial)
         results.append([])
 
-    if break_flag:
-        return
+    # if break_flag:
+    #     return
 
     for camera_id in range(len(camera_names)):
         
