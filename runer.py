@@ -285,8 +285,11 @@ class Runer:
             exit()
     
         self.epoch = 0
+        self.depth_scale = 1
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
+            if self.epoch == 1:
+                self.depth_scale = 0.5
             # self.train_loader.sampler.set_epoch(self.epoch)
             self.run_epoch()
 
@@ -393,7 +396,7 @@ class Runer:
                     pred_depth = cv2.resize(pred_depth, (gt_width, gt_height))
                     # print(pred_depth)
                     if self.opt.focal:
-                        pred_depth = 0.5 * pred_depth * data[("K", 0, 0)][i, 0, 0].item() #/ self.opt.focal_scale
+                        pred_depth = self.depth_scale * pred_depth * data[("K", 0, 0)][i, 0, 0].item() #/ self.opt.focal_scale
 
                     mask = np.logical_and(gt_depth > 0, gt_depth < 200)
                     
@@ -623,7 +626,7 @@ class Runer:
 
             if self.opt.focal:
                 # TODO remove focal_scale
-                depth = 0.5 * depth * inputs[("K", 0, 0)][:, 0, 0][:, None, None, None] #/ self.opt.focal_scale
+                depth = self.depth_scale * depth * inputs[("K", 0, 0)][:, 0, 0][:, None, None, None] #/ self.opt.focal_scale
                 # print(depth)
             outputs[("depth", 0, scale)] = depth
 
